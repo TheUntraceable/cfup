@@ -1,0 +1,19 @@
+{
+  "name": "cft",
+  "version": "0.1.0",
+  "description": "Add and remove Cloudflare Tunnel public hostnames from the command line",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "cft": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "bun x --package typescript tsc --noEmit",
+    "build": "bun build --compile ./src/cli.ts --outfile dist/cft"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4"
+  }
+}
