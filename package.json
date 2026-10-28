@@ -1,11 +1,29 @@
 {
-  "name": "cfup",
+  "name": "@theuntraceable/cfup",
   "version": "0.1.0",
   "description": "Add and remove Cloudflare Tunnel public hostnames from the command line",
   "license": "MIT",
   "type": "module",
+  "keywords": ["cloudflare", "tunnel", "cloudflared", "dns", "cli"],
+  "homepage": "https://github.com/TheUntraceable/cfup",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheUntraceable/cfup.git"
+  },
   "bin": {
     "cfup": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.1"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "dev": "bun run src/cli.ts",

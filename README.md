@@ -6,7 +6,21 @@ Each public hostname belongs to exactly one remotely-managed tunnel. `localhost`
 
 ## Install
 
-Requires [Bun](https://bun.sh) to build:
+Requires [Bun](https://bun.sh).
+
+Run without installing:
+
+```sh
+bunx @theuntraceable/cfup ls
+```
+
+Install globally, then type `cfup`:
+
+```sh
+bun add -g @theuntraceable/cfup
+```
+
+Or build a standalone binary:
 
 ```sh
 bun install
@@ -14,6 +28,8 @@ bun run build        # dist/cfup (dist/cfup.exe on Windows)
 ```
 
 Drop `dist/cfup` on your PATH.
+
+The npm package is scoped because npm's similarity filter blocks the bare name `cfup`; the command is still `cfup`.
 
 ## Token
 
