@@ -23,7 +23,7 @@ test("tree has a key for every command path", () => {
 
 test("help is generated from the same table", () => {
   const help = rootHelp("0.0.0");
-  for (const c of COMMANDS) expect(help).toContain(`cft ${c.name}`);
+  for (const c of COMMANDS) expect(help).toContain(`cfup ${c.name}`);
   expect(commandHelp(["tunnel"])).toContain("rename <old> <new>");
   expect(commandHelp(["add"])).toContain("--no-tls-verify");
   expect(commandHelp(["nope"])).toBeUndefined();

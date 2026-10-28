@@ -267,7 +267,7 @@ export function evaluateChecklist(input: ChecklistInput): { rows: CheckRow[]; ha
   }
 
   const tunnel: CheckRow = { mark: "fail", label: "Tunnel read", detail: "", source: "GET /accounts/{id}/cfd_tunnel" };
-  if (!tunnels) tunnel.detail = account.mark === "ok" ? "pick an account: cft config set account <id>" : "needs an account";
+  if (!tunnels) tunnel.detail = account.mark === "ok" ? "pick an account: cfup config set account <id>" : "needs an account";
   else if (!tunnels.ok) tunnel.detail = tunnels.error;
   else {
     tunnel.mark = "ok";
@@ -285,13 +285,13 @@ export function evaluateChecklist(input: ChecklistInput): { rows: CheckRow[]; ha
   const tunnelWrite: CheckRow = {
     mark: "unknown",
     label: "Tunnel write",
-    detail: "verified on first `cft add`",
+    detail: "verified on first `cfup add`",
     source: "(needs Account → Cloudflare Tunnel: Edit)",
   };
   const dnsWrite: CheckRow = {
     mark: "unknown",
     label: "DNS write",
-    detail: "verified on first `cft add`",
+    detail: "verified on first `cfup add`",
     source: "(needs Zone → DNS: Edit)",
   };
   const rows = [valid, account, tunnel, zone, tunnelWrite, dnsWrite];

@@ -5,20 +5,20 @@ import { join } from "node:path";
 import { configPath, readConfig, resolveSettings, writeConfig } from "./config.ts";
 
 let dir: string;
-const previous = process.env.CFT_CONFIG_DIR;
+const previous = process.env.CFUP_CONFIG_DIR;
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), "cft-test-"));
-  process.env.CFT_CONFIG_DIR = join(dir, "nested");
+  dir = mkdtempSync(join(tmpdir(), "cfup-test-"));
+  process.env.CFUP_CONFIG_DIR = join(dir, "nested");
 });
 
 afterAll(() => {
-  if (previous === undefined) delete process.env.CFT_CONFIG_DIR;
-  else process.env.CFT_CONFIG_DIR = previous;
+  if (previous === undefined) delete process.env.CFUP_CONFIG_DIR;
+  else process.env.CFUP_CONFIG_DIR = previous;
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("CFT_CONFIG_DIR decides the path", () => {
+test("CFUP_CONFIG_DIR decides the path", () => {
   expect(configPath()).toBe(join(dir, "nested", "config.json"));
 });
 
@@ -48,7 +48,7 @@ test("precedence: flag > env > file", () => {
     tunnel: { value: "file-tunnel", source: "file" },
     account: { value: "file-account", source: "file" },
   });
-  const env = { CLOUDFLARE_API_TOKEN: "env-token", CFT_TUNNEL: "env-tunnel", CFT_ACCOUNT: "env-account" };
+  const env = { CLOUDFLARE_API_TOKEN: "env-token", CFUP_TUNNEL: "env-tunnel", CFUP_ACCOUNT: "env-account" };
   expect(resolveSettings(config, env, {}).token).toEqual({ value: "env-token", source: "env" });
   expect(resolveSettings(config, env, {}).tunnel).toEqual({ value: "env-tunnel", source: "env" });
   expect(resolveSettings(config, env, { tunnel: "flag-tunnel", account: "flag-account" })).toMatchObject({

@@ -23,7 +23,7 @@ export async function resolveAccount(cf: Cloudflare, ctx: Ctx): Promise<string> 
   if (accounts.length === 1) return accounts[0]!.id;
   if (!accounts.length) throw new Error("this token can't see any account (needs Account → Cloudflare Tunnel: Edit)");
   throw new Error(
-    `this token sees ${accounts.length} accounts; pick one with --account, CFT_ACCOUNT, or \`cft config set account <id>\`:\n` +
+    `this token sees ${accounts.length} accounts; pick one with --account, CFUP_ACCOUNT, or \`cfup config set account <id>\`:\n` +
       accounts.map((a) => `${a.id}  ${a.name}`).join("\n"),
   );
 }
@@ -46,15 +46,15 @@ export function pickTunnel<E extends { tunnel: Tunnel }>(entries: E[], ctx: Ctx)
     return entries.find((e) => e.tunnel === tunnel)!;
   }
   if (entries.length === 1) return entries[0]!;
-  if (!entries.length) throw new Error("this account has no tunnels; create one with `cft tunnel create <name>`");
+  if (!entries.length) throw new Error("this account has no tunnels; create one with `cfup tunnel create <name>`");
   throw new Error(
-    "several tunnels; pick one with --tunnel <name> or `cft config set tunnel <name>`:\n" +
+    "several tunnels; pick one with --tunnel <name> or `cfup config set tunnel <name>`:\n" +
       entries.map((e) => `${e.tunnel.name}  ${e.tunnel.status}`).join("\n"),
   );
 }
 
 export function localRefusal(t: Tunnel): Error {
-  return new Error(`tunnel "${t.name}" is locally managed: its ingress lives in that machine's config.yml and cft can't edit it`);
+  return new Error(`tunnel "${t.name}" is locally managed: its ingress lives in that machine's config.yml and cfup can't edit it`);
 }
 
 export function resolveZone(cf: Cloudflare, hostname: string): Promise<Zone | null> {
@@ -210,7 +210,7 @@ async function remove(ctx: Ctx, name: string) {
 
 export async function tunnelCommand(ctx: Ctx, sub: string, args: string[]): Promise<number> {
   const arity: Record<string, number> = { ls: 0, create: 1, token: 1, rm: 1, rename: 2 };
-  if (args.length !== arity[sub]) throw new Error(`wrong arguments (see cft tunnel ${sub} --help)`);
+  if (args.length !== arity[sub]) throw new Error(`wrong arguments (see cfup tunnel ${sub} --help)`);
   if (sub === "ls") await list(ctx);
   if (sub === "create") await create(ctx, args[0]!.trim());
   if (sub === "token") await token(ctx, args[0]!);

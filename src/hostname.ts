@@ -138,7 +138,7 @@ export async function ls(ctx: Ctx): Promise<number> {
 }
 
 export async function add(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 2) throw new Error("usage: cft add <hostname> <service> (see cft add --help)");
+  if (args.length !== 2) throw new Error("usage: cfup add <hostname> <service> (see cfup add --help)");
   const host = normalizeHostname(args[0]!);
   const rule = ruleFromArgs(ctx, host, normalizeService(args[1]!));
   const { cf, zone: zoneLookup, account, entries } = await load(ctx, host);
@@ -148,10 +148,10 @@ export async function add(ctx: Ctx, args: string[]): Promise<number> {
   const { replaces, identical, elsewhere } = addConflicts(entries, target.tunnel.id, rule);
   if (!ctx.flags.force && elsewhere[0])
     throw new Error(
-      `${host} already routes on tunnel "${elsewhere[0].tunnel.name}" -> ${elsewhere[0].rules.map((r) => r.service).join(", ")}; use --force or cft mv to move it`,
+      `${host} already routes on tunnel "${elsewhere[0].tunnel.name}" -> ${elsewhere[0].rules.map((r) => r.service).join(", ")}; use --force or cfup mv to move it`,
     );
   if (!ctx.flags.force && replaces && !identical)
-    throw new Error(`${describeRule(replaces)} already exists on "${target.tunnel.name}"; use --force or cft set to change it`);
+    throw new Error(`${describeRule(replaces)} already exists on "${target.tunnel.name}"; use --force or cfup set to change it`);
 
   const zone = await requireZone(zoneLookup, host);
   const dns = await planDns(ctx, cf, zone, host, target.tunnel, elsewhere.map((m) => m.tunnel));
@@ -168,17 +168,17 @@ export async function add(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function set(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length < 1 || args.length > 2) throw new Error("usage: cft set <hostname> [service] (see cft set --help)");
+  if (args.length < 1 || args.length > 2) throw new Error("usage: cfup set <hostname> [service] (see cfup set --help)");
   const host = normalizeHostname(args[0]!);
   const service = args[1] ? normalizeService(args[1]) : undefined;
   const originRequest = originRequestFromFlags(ctx.flags);
-  if (!service && !originRequest) throw new Error("nothing to change: give a service or an origin option (see cft set --help)");
+  if (!service && !originRequest) throw new Error("nothing to change: give a service or an origin option (see cfup set --help)");
   const path = ctx.flags.path;
   const cf = ctx.cf();
   const account = await resolveAccount(cf, ctx);
   const entries = await loadTunnels(cf, account);
   const matches = findHostname(entries, host).filter((m) => m.rules.some((r) => sameRoute(r, host, path)));
-  if (!matches.length) throw new Error(`${host}${path ? ` path=${path}` : ""} isn't routed on any tunnel; cft add creates it`);
+  if (!matches.length) throw new Error(`${host}${path ? ` path=${path}` : ""} isn't routed on any tunnel; cfup add creates it`);
   const plan = matches.map((m) => {
     const u = updateIngress(m.config, host, path, { service, originRequest });
     const changed = describeRule(u.before) !== describeRule(u.after);
@@ -189,7 +189,7 @@ export async function set(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function mv(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 1 || !ctx.flags.tunnel) throw new Error("usage: cft mv <hostname> --tunnel <name>");
+  if (args.length !== 1 || !ctx.flags.tunnel) throw new Error("usage: cfup mv <hostname> --tunnel <name>");
   const host = normalizeHostname(args[0]!);
   const { cf, zone: zoneLookup, account, entries } = await load(ctx, host);
   const target = pickTunnel(entries, ctx);
@@ -197,7 +197,7 @@ export async function mv(ctx: Ctx, args: string[]): Promise<number> {
   const sources = findHostname(entries, host).filter((m) => m.tunnel.id !== target.tunnel.id);
   if (!sources.length) {
     const here = findHostname([target], host).length > 0;
-    throw new Error(here ? `${host} is already on "${target.tunnel.name}"` : `${host} isn't routed on any tunnel; cft add creates it`);
+    throw new Error(here ? `${host} is already on "${target.tunnel.name}"` : `${host} isn't routed on any tunnel; cfup add creates it`);
   }
 
   let toConfig = target.config;
@@ -215,7 +215,7 @@ export async function mv(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function rm(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 1) throw new Error("usage: cft rm <hostname> (see cft rm --help)");
+  if (args.length !== 1) throw new Error("usage: cfup rm <hostname> (see cfup rm --help)");
   const host = normalizeHostname(args[0]!);
   const path = ctx.flags.path;
   const { cf, zone: zoneLookup, account, entries } = await load(ctx, host);
@@ -246,7 +246,7 @@ export async function rm(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function open(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 1) throw new Error("usage: cft open <hostname>");
+  if (args.length !== 1) throw new Error("usage: cfup open <hostname>");
   const host = normalizeHostname(args[0]!);
   if (host.startsWith("*.")) throw new Error("can't open a wildcard hostname");
   const url = `https://${host}`;

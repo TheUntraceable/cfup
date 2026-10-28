@@ -82,7 +82,7 @@ function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
     const eq = arg.indexOf("=");
     const name = eq > 0 ? arg.slice(0, eq) : arg;
     const spec = FLAG_SPECS.find((f) => name === `--${f.long}` || (f.short && name === `-${f.short}`));
-    if (!spec) throw new Error(`unknown option ${name} (see cft --help)`);
+    if (!spec) throw new Error(`unknown option ${name} (see cfup --help)`);
     if (spec.value) {
       const value = eq > 0 ? arg.slice(eq + 1) : argv[++i];
       if (!value) throw new Error(`${name} needs a value <${spec.value}>`);
@@ -98,7 +98,7 @@ function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
 function checkFlags(spec: CommandSpec, path: string, flags: Flags) {
   const allowed = new Set<string>([...(spec.flags ?? []), ...FLAG_SPECS.filter((f) => f.global).map((f) => f.long)]);
   const stray = Object.keys(flags).find((f) => !allowed.has(f));
-  if (stray) throw new Error(`--${stray} doesn't apply to cft ${path} (see cft ${path} --help)`);
+  if (stray) throw new Error(`--${stray} doesn't apply to cfup ${path} (see cfup ${path} --help)`);
 }
 
 function makeCtx(flags: Flags, ui: Ui): Ctx {
@@ -124,7 +124,7 @@ function makeCtx(flags: Flags, ui: Ui): Ctx {
       const token = settings.token?.value;
       if (!token)
         throw new Error(
-          "no Cloudflare API token. Run `cft config set token <token>`.\n" +
+          "no Cloudflare API token. Run `cfup config set token <token>`.\n" +
             "Create one at dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom.",
         );
       return cloudflare(token);
@@ -206,7 +206,7 @@ async function setToken(ctx: Ctx, token: string): Promise<number> {
   if (process.env.CLOUDFLARE_API_TOKEN && !ctx.flags.json)
     ctx.ui.out(ctx.ui.yellow("note: CLOUDFLARE_API_TOKEN is set and overrides the saved token"));
   ctx.finish(
-    result.hardFailure ? "Saved the token, but it can't do everything cft needs (see above)." : "Saved the token.",
+    result.hardFailure ? "Saved the token, but it can't do everything cfup needs (see above)." : "Saved the token.",
     { checklist: result.rows, hardFailure: result.hardFailure },
     !result.hardFailure,
   );
@@ -217,7 +217,7 @@ async function show(ctx: Ctx): Promise<number> {
   const { ui } = ctx;
   const path = configPath();
   const { token, tunnel, account } = ctx.settings;
-  const envNames: Record<string, string> = { token: "CLOUDFLARE_API_TOKEN", tunnel: "CFT_TUNNEL", account: "CFT_ACCOUNT" };
+  const envNames: Record<string, string> = { token: "CLOUDFLARE_API_TOKEN", tunnel: "CFUP_TUNNEL", account: "CFUP_ACCOUNT" };
   const source = (key: string, s?: { source: string }) =>
     !s ? "" : s.source === "env" ? `(env ${envNames[key]})` : s.source === "flag" ? `(--${key})` : "(file)";
   const settings = {
@@ -245,14 +245,14 @@ async function show(ctx: Ctx): Promise<number> {
 
 async function configCommand(ctx: Ctx, sub: string, args: string[]): Promise<number> {
   if (sub === "show") {
-    if (args.length) throw new Error("usage: cft config show");
+    if (args.length) throw new Error("usage: cfup config show");
     return show(ctx);
   }
   const [key, value, ...extra] = args;
-  if (!CONFIG_KEYS.includes(key as ConfigKey) || extra.length) throw new Error(`usage: cft config ${sub} <token|tunnel|account>${sub === "set" ? " <value>" : ""}`);
+  if (!CONFIG_KEYS.includes(key as ConfigKey) || extra.length) throw new Error(`usage: cfup config ${sub} <token|tunnel|account>${sub === "set" ? " <value>" : ""}`);
   const path = configPath();
   if (sub === "set") {
-    if (!value?.trim()) throw new Error(`usage: cft config set ${key} <value>`);
+    if (!value?.trim()) throw new Error(`usage: cfup config set ${key} <value>`);
     if (key === "token") return setToken(ctx, value.trim());
     await ctx.apply([
       { kind: "config", action: "save", detail: `${key} = ${value} to ${path}`, run: async () => writeConfig({ ...readConfig(path), [key!]: value.trim() }, path) },
@@ -260,7 +260,7 @@ async function configCommand(ctx: Ctx, sub: string, args: string[]): Promise<num
     ctx.finish(`Saved ${key} "${value.trim()}".`);
     return 0;
   }
-  if (value !== undefined) throw new Error(`usage: cft config unset ${key}`);
+  if (value !== undefined) throw new Error(`usage: cfup config unset ${key}`);
   const config = readConfig(path);
   delete config[key as ConfigKey];
   await ctx.apply([{ kind: "config", action: "remove", detail: `${key} from ${path}`, run: async () => writeConfig(config, path) }]);
@@ -281,9 +281,9 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   const top = COMMANDS.find((c) => c.name === command);
-  if (!top) throw new Error(`unknown command "${command}" (see cft --help)`);
+  if (!top) throw new Error(`unknown command "${command}" (see cfup --help)`);
   const sub = top.sub ? rest.shift() : undefined;
-  if (sub && !top.sub?.some((s) => s.name === sub)) throw new Error(`unknown command "cft ${command} ${sub}" (see cft ${command} --help)`);
+  if (sub && !top.sub?.some((s) => s.name === sub)) throw new Error(`unknown command "cfup ${command} ${sub}" (see cfup ${command} --help)`);
   if (flags.help || (top.sub && !sub)) {
     ui.out(commandHelp(sub ? [command, sub] : [command])!);
     return 0;
@@ -292,14 +292,14 @@ async function main(argv: string[]): Promise<number> {
   checkFlags(findCommand(sub ? [command, sub] : [command])!, path, flags);
 
   if (command === "completions") {
-    if (rest.length !== 1) throw new Error("usage: cft completions <bash|zsh|fish|pwsh>");
+    if (rest.length !== 1) throw new Error("usage: cfup completions <bash|zsh|fish|pwsh>");
     ui.out(completionScript(rest[0]!));
     return 0;
   }
   const ctx = makeCtx(flags, ui);
   switch (command) {
     case "ls":
-      if (rest.length) throw new Error("usage: cft ls");
+      if (rest.length) throw new Error("usage: cfup ls");
       return hostname.ls(ctx);
     case "add":
       return hostname.add(ctx, rest);
@@ -318,7 +318,7 @@ async function main(argv: string[]): Promise<number> {
     case "config":
       return configCommand(ctx, sub!, rest);
     case "doctor":
-      if (rest.length) throw new Error("usage: cft doctor");
+      if (rest.length) throw new Error("usage: cfup doctor");
       return show(ctx);
   }
   throw new Error(`unknown command "${command}"`);
@@ -329,9 +329,9 @@ main(process.argv.slice(2)).then(
     process.exitCode = code;
   },
   (err) => {
-    if (process.env.CFT_DEBUG === "1") console.error(err);
+    if (process.env.CFUP_DEBUG === "1") console.error(err);
     const [first, ...more] = (err instanceof Error ? err.message : String(err)).split("\n");
-    process.stderr.write(`cft: ${first}\n${more.map((line) => `  ${line}\n`).join("")}`);
+    process.stderr.write(`cfup: ${first}\n${more.map((line) => `  ${line}\n`).join("")}`);
     process.exitCode = 1;
   },
 );

@@ -16,10 +16,10 @@ export const FLAGS = [
   { long: "dry-run", short: "n", summary: "print the plan and ingress diff, write nothing" },
   { long: "wait", summary: "after writing, wait up to 60s for https://<hostname>/ to answer" },
   { long: "show-token", summary: "print the tunnel token in full" },
-  { long: "account", value: "id", summary: "account id (beats CFT_ACCOUNT and the config file)", global: true },
+  { long: "account", value: "id", summary: "account id (beats CFUP_ACCOUNT and the config file)", global: true },
   { long: "json", summary: "machine-readable output", global: true },
   { long: "no-color", summary: "no colour (also NO_COLOR, or when output is piped)", global: true },
-  { long: "help", short: "h", summary: "help for cft or a command", global: true },
+  { long: "help", short: "h", summary: "help for cfup or a command", global: true },
   { long: "version", short: "v", summary: "print the version", global: true },
 ] as const satisfies readonly FlagSpec[];
 
@@ -50,17 +50,17 @@ const ORIGIN = [
 export const SHELLS = ["bash", "zsh", "fish", "pwsh"] as const;
 
 export const COMMANDS: readonly CommandSpec[] = [
-  { name: "ls", summary: "list every tunnel's public hostnames", example: "cft ls" },
+  { name: "ls", summary: "list every tunnel's public hostnames", example: "cfup ls" },
   {
     name: "add",
     args: "<hostname> <service>",
     summary: "route a public hostname to a service",
     flags: ["tunnel", "path", ...ORIGIN, "force", "dry-run", "wait"],
-    example: "cft add app.example.com 3010 --tunnel nas",
+    example: "cfup add app.example.com 3010 --tunnel nas",
     note:
       "Service: 3010 and localhost:3010 mean http://localhost:3010, host:8080 means\n" +
       "http://host:8080, anything with a scheme passes through. localhost is the\n" +
-      "tunnel's machine. Tunnel: --tunnel, then CFT_TUNNEL, then the config file,\n" +
+      "tunnel's machine. Tunnel: --tunnel, then CFUP_TUNNEL, then the config file,\n" +
       "then the only tunnel if there is one.",
   },
   {
@@ -68,49 +68,49 @@ export const COMMANDS: readonly CommandSpec[] = [
     args: "<hostname> [service]",
     summary: "change a route's service or origin options (DNS untouched)",
     flags: ["path", ...ORIGIN, "dry-run", "wait"],
-    example: "cft set app.example.com 3011 --no-tls-verify",
+    example: "cfup set app.example.com 3011 --no-tls-verify",
   },
   {
     name: "mv",
     args: "<hostname>",
     summary: "move a hostname to another tunnel and repoint its CNAME",
     flags: ["tunnel", "force", "dry-run", "wait"],
-    example: "cft mv app.example.com --tunnel laptop",
+    example: "cfup mv app.example.com --tunnel laptop",
   },
   {
     name: "rm",
     args: "<hostname>",
     summary: "remove a public hostname and its CNAME",
     flags: ["path", "dry-run"],
-    example: "cft rm app.example.com",
+    example: "cfup rm app.example.com",
   },
-  { name: "open", args: "<hostname>", summary: "open https://<hostname> in the browser", example: "cft open app.example.com" },
+  { name: "open", args: "<hostname>", summary: "open https://<hostname> in the browser", example: "cfup open app.example.com" },
   {
     name: "tunnel",
     summary: "manage tunnels",
     sub: [
-      { name: "ls", summary: "list tunnels with status and connections", example: "cft tunnel ls" },
+      { name: "ls", summary: "list tunnels with status and connections", example: "cfup tunnel ls" },
       {
         name: "create",
         args: "<name>",
         summary: "create a remotely-managed tunnel and print its install command",
         flags: ["show-token", "dry-run"],
-        example: "cft tunnel create nas",
+        example: "cfup tunnel create nas",
       },
       {
         name: "token",
         args: "<name>",
         summary: "print the install command for an existing tunnel",
         flags: ["show-token"],
-        example: "cft tunnel token nas --show-token",
+        example: "cfup tunnel token nas --show-token",
       },
-      { name: "rename", args: "<old> <new>", summary: "rename a tunnel", flags: ["dry-run"], example: "cft tunnel rename nas nas-old" },
+      { name: "rename", args: "<old> <new>", summary: "rename a tunnel", flags: ["dry-run"], example: "cfup tunnel rename nas nas-old" },
       {
         name: "rm",
         args: "<name>",
         summary: "delete a tunnel (--force first removes its hostnames, CNAMEs, and routes)",
         flags: ["force", "dry-run"],
-        example: "cft tunnel rm nas-old --force",
+        example: "cfup tunnel rm nas-old --force",
       },
     ],
   },
@@ -118,15 +118,15 @@ export const COMMANDS: readonly CommandSpec[] = [
     name: "route",
     summary: "manage private network routes (WARP)",
     sub: [
-      { name: "ls", summary: "list private network routes", example: "cft route ls" },
+      { name: "ls", summary: "list private network routes", example: "cfup route ls" },
       {
         name: "add",
         args: "<cidr>",
         summary: "route a private network through a tunnel",
         flags: ["tunnel", "comment", "dry-run"],
-        example: "cft route add 192.168.1.0/24 --tunnel nas --comment home",
+        example: "cfup route add 192.168.1.0/24 --tunnel nas --comment home",
       },
-      { name: "rm", args: "<cidr>", summary: "remove a private network route", flags: ["dry-run"], example: "cft route rm 192.168.1.0/24" },
+      { name: "rm", args: "<cidr>", summary: "remove a private network route", flags: ["dry-run"], example: "cfup route rm 192.168.1.0/24" },
     ],
   },
   {
@@ -139,7 +139,7 @@ export const COMMANDS: readonly CommandSpec[] = [
         summary: "save a setting (a token is verified and checked first)",
         choices: CONFIG_KEYS,
         flags: ["dry-run"],
-        example: "cft config set token <token>",
+        example: "cfup config set token <token>",
       },
       {
         name: "unset",
@@ -147,18 +147,18 @@ export const COMMANDS: readonly CommandSpec[] = [
         summary: "forget a setting",
         choices: CONFIG_KEYS,
         flags: ["dry-run"],
-        example: "cft config unset tunnel",
+        example: "cfup config unset tunnel",
       },
-      { name: "show", summary: "show settings and check token permissions", example: "cft config show" },
+      { name: "show", summary: "show settings and check token permissions", example: "cfup config show" },
     ],
   },
-  { name: "doctor", summary: "same as cft config show", example: "cft doctor" },
+  { name: "doctor", summary: "same as cfup config show", example: "cfup doctor" },
   {
     name: "completions",
     args: "<bash|zsh|fish|pwsh>",
     summary: "print a shell completion script",
     choices: SHELLS,
-    example: "cft completions bash >> ~/.bashrc",
+    example: "cfup completions bash >> ~/.bashrc",
   },
 ];
 
@@ -183,11 +183,11 @@ const globalFlags = () => FLAG_SPECS.filter((f) => f.global).map((f) => f.long);
 export function rootHelp(version: string): string {
   const usage: [string, string][] = COMMANDS.flatMap((c) =>
     c.sub
-      ? c.sub.map((s): [string, string] => [`cft ${c.name} ${s.name}${s.args ? ` ${s.args}` : ""}`, s.summary])
-      : [[`cft ${c.name}${c.args ? ` ${c.args}` : ""}`, c.summary]],
+      ? c.sub.map((s): [string, string] => [`cfup ${c.name} ${s.name}${s.args ? ` ${s.args}` : ""}`, s.summary])
+      : [[`cfup ${c.name}${c.args ? ` ${c.args}` : ""}`, c.summary]],
   );
   return [
-    `cft ${version}: Cloudflare Tunnel hostnames and routes from the command line`,
+    `cfup ${version}: Cloudflare Tunnel hostnames and routes from the command line`,
     "",
     "Usage",
     ...columns(usage),
@@ -195,7 +195,7 @@ export function rootHelp(version: string): string {
     "Global options",
     ...columns(flagRows(globalFlags())),
     "",
-    "Run cft <command> --help for a command's options.",
+    "Run cfup <command> --help for a command's options.",
     "",
     "Service shorthand: 3010 and localhost:3010 mean http://localhost:3010, host:8080",
     "means http://host:8080, anything with a scheme passes through. localhost is the",
@@ -209,17 +209,17 @@ export function commandHelp(path: string[]): string | undefined {
   if (!top || !spec) return undefined;
   if (spec.sub)
     return [
-      `Usage: cft ${spec.name} <command>`,
+      `Usage: cfup ${spec.name} <command>`,
       "",
       spec.summary,
       "",
       "Commands",
       ...columns(spec.sub.map((s): [string, string] => [`${s.name}${s.args ? ` ${s.args}` : ""}`, s.summary])),
       "",
-      `Run cft ${spec.name} <command> --help for a command's options.`,
+      `Run cfup ${spec.name} <command> --help for a command's options.`,
     ].join("\n");
   const name = spec === top ? top.name : `${top.name} ${spec.name}`;
-  const lines = [`Usage: cft ${name}${spec.args ? ` ${spec.args}` : ""}${spec.flags?.length ? " [options]" : ""}`, "", spec.summary];
+  const lines = [`Usage: cfup ${name}${spec.args ? ` ${spec.args}` : ""}${spec.flags?.length ? " [options]" : ""}`, "", spec.summary];
   if (spec.note) lines.push("", spec.note);
   if (spec.flags?.length) lines.push("", "Options", ...columns(flagRows(spec.flags)));
   if (spec.example) lines.push("", "Example", `  ${spec.example}`);
@@ -246,7 +246,7 @@ export function completionTree(): Record<string, string[]> {
 function bash(tree: Record<string, string[]>): string {
   const keys = Object.keys(tree).filter(Boolean);
   return [
-    "_cft() {",
+    "_cfup() {",
     '  local cur="${COMP_WORDS[COMP_CWORD]}" key="" w i',
     "  for ((i = 1; i < COMP_CWORD; i++)); do",
     '    w="${COMP_WORDS[i]}"',
@@ -260,14 +260,14 @@ function bash(tree: Record<string, string[]>): string {
     ...Object.entries(tree).map(([k, words]) => `    "${k}") COMPREPLY=($(compgen -W "${words.join(" ")}" -- "$cur")) ;;`),
     "  esac",
     "}",
-    "complete -F _cft cft",
+    "complete -F _cfup cfup",
   ].join("\n");
 }
 
 function fish(tree: Record<string, string[]>): string {
   const keys = Object.keys(tree).filter(Boolean);
   return [
-    "function __cft_key",
+    "function __cfup_key",
     '    set -l key ""',
     "    for w in (commandline -opc)[2..-1]",
     "        string match -q -- '-*' $w; and continue",
@@ -280,14 +280,14 @@ function fish(tree: Record<string, string[]>): string {
     "    end",
     "    echo $key",
     "end",
-    "complete -c cft -f",
-    ...Object.entries(tree).map(([k, words]) => `complete -c cft -n 'test "x"(__cft_key) = "x${k}"' -a '${words.join(" ")}'`),
+    "complete -c cfup -f",
+    ...Object.entries(tree).map(([k, words]) => `complete -c cfup -n 'test "x"(__cfup_key) = "x${k}"' -a '${words.join(" ")}'`),
   ].join("\n");
 }
 
 function pwsh(tree: Record<string, string[]>): string {
   return [
-    "Register-ArgumentCompleter -Native -CommandName cft, cft.exe -ScriptBlock {",
+    "Register-ArgumentCompleter -Native -CommandName cfup, cfup.exe -ScriptBlock {",
     "    param($wordToComplete, $commandAst, $cursorPosition)",
     "    $tree = @{",
     ...Object.entries(tree).map(([k, words]) => `        '${k}' = @(${words.map((w) => `'${w}'`).join(", ")})`),

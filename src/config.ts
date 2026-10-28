@@ -13,7 +13,7 @@ export type Settings = Partial<Record<ConfigKey, Setting>>;
 type Env = Record<string, string | undefined>;
 
 export function configPath(env: Env = process.env): string {
-  return join(env.CFT_CONFIG_DIR || join(homedir(), ".cft"), "config.json");
+  return join(env.CFUP_CONFIG_DIR || join(homedir(), ".cfup"), "config.json");
 }
 
 export function readConfig(path = configPath()): Config {
@@ -54,7 +54,7 @@ export function resolveSettings(config: Config, env: Env, flags: { tunnel?: stri
   };
   return {
     token: pick([env.CLOUDFLARE_API_TOKEN, "env"], [config.token, "file"]),
-    tunnel: pick([flags.tunnel, "flag"], [env.CFT_TUNNEL, "env"], [config.tunnel, "file"]),
-    account: pick([flags.account, "flag"], [env.CFT_ACCOUNT, "env"], [config.account, "file"]),
+    tunnel: pick([flags.tunnel, "flag"], [env.CFUP_TUNNEL, "env"], [config.tunnel, "file"]),
+    account: pick([flags.account, "flag"], [env.CFUP_ACCOUNT, "env"], [config.account, "file"]),
   };
 }
