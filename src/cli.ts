@@ -18,6 +18,8 @@ import {
   missingPermissionHint,
   pastTense,
   TOKEN_RECIPE,
+  UsageError,
+  wrongArgs,
   TOKENS_URL,
   visibleAccounts,
   type CheckRow,
@@ -91,13 +93,13 @@ function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
     const eq = arg.indexOf("=");
     const name = eq > 0 ? arg.slice(0, eq) : arg;
     const spec = FLAG_SPECS.find((f) => name === `--${f.long}` || (f.short && name === `-${f.short}`));
-    if (!spec) throw new Error(`unknown option ${name} (see cfup --help)`);
+    if (!spec) throw new UsageError(`unknown option ${name}`, args.slice(0, 2));
     if (spec.value) {
       const value = eq > 0 ? arg.slice(eq + 1) : argv[++i];
-      if (!value) throw new Error(`${name} needs a value <${spec.value}>`);
+      if (!value) throw new UsageError(`${name} needs a value <${spec.value}>`, args.slice(0, 2));
       flags[spec.long] = value;
     } else {
-      if (eq > 0) throw new Error(`${name} takes no value`);
+      if (eq > 0) throw new UsageError(`${name} takes no value`, args.slice(0, 2));
       flags[spec.long] = true;
     }
   }
@@ -107,7 +109,7 @@ function parseArgs(argv: string[]): { args: string[]; flags: Flags } {
 function checkFlags(spec: CommandSpec, path: string, flags: Flags) {
   const allowed = new Set<string>([...(spec.flags ?? []), ...FLAG_SPECS.filter((f) => f.global).map((f) => f.long)]);
   const stray = Object.keys(flags).find((f) => !allowed.has(f));
-  if (stray) throw new Error(`--${stray} doesn't apply to cfup ${path} (see cfup ${path} --help)`);
+  if (stray) throw new UsageError(`--${stray} doesn't apply to cfup ${path}`, path.split(" "));
 }
 
 function makeCtx(flags: Flags, ui: Ui): Ctx {
@@ -257,14 +259,15 @@ async function show(ctx: Ctx): Promise<number> {
 
 async function configCommand(ctx: Ctx, sub: string, args: string[]): Promise<number> {
   if (sub === "show") {
-    if (args.length) throw new Error("usage: cfup config show");
+    if (args.length) throw wrongArgs(["config", "show"], args);
     return show(ctx);
   }
   const [key, value, ...extra] = args;
-  if (!CONFIG_KEYS.includes(key as ConfigKey) || extra.length) throw new Error(`usage: cfup config ${sub} <token|tunnel|account>${sub === "set" ? " <value>" : ""}`);
+  if (!CONFIG_KEYS.includes(key as ConfigKey) || extra.length)
+    throw wrongArgs(["config", sub], args);
   const path = configPath();
   if (sub === "set") {
-    if (!value?.trim()) throw new Error(`usage: cfup config set ${key} <value>`);
+    if (!value?.trim()) throw wrongArgs(["config", "set"], args);
     if (key === "token") return setToken(ctx, value.trim());
     await ctx.apply([
       { kind: "config", action: "save", detail: `${key} = ${value} to ${path}`, run: async () => writeConfig({ ...readConfig(path), [key!]: value.trim() }, path) },
@@ -272,7 +275,7 @@ async function configCommand(ctx: Ctx, sub: string, args: string[]): Promise<num
     ctx.finish(`Saved ${key} "${value.trim()}".`);
     return 0;
   }
-  if (value !== undefined) throw new Error(`usage: cfup config unset ${key}`);
+  if (value !== undefined) throw wrongArgs(["config", "unset"], args);
   const config = readConfig(path);
   delete config[key as ConfigKey];
   await ctx.apply([{ kind: "config", action: "remove", detail: `${key} from ${path}`, run: async () => writeConfig(config, path) }]);
@@ -293,9 +296,9 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   const top = COMMANDS.find((c) => c.name === command);
-  if (!top) throw new Error(`unknown command "${command}" (see cfup --help)`);
+  if (!top) throw new UsageError(`unknown command "${command}"`, []);
   const sub = top.sub ? rest.shift() : undefined;
-  if (sub && !top.sub?.some((s) => s.name === sub)) throw new Error(`unknown command "cfup ${command} ${sub}" (see cfup ${command} --help)`);
+  if (sub && !top.sub?.some((s) => s.name === sub)) throw new UsageError(`unknown command "cfup ${command} ${sub}"`, [command]);
   if (flags.help || (top.sub && !sub)) {
     ui.out(commandHelp(sub ? [command, sub] : [command])!);
     return 0;
@@ -304,14 +307,14 @@ async function main(argv: string[]): Promise<number> {
   checkFlags(findCommand(sub ? [command, sub] : [command])!, path, flags);
 
   if (command === "completions") {
-    if (rest.length !== 1) throw new Error("usage: cfup completions <bash|zsh|fish|pwsh>");
+    if (rest.length !== 1) throw wrongArgs(["completions"], rest);
     ui.out(completionScript(rest[0]!));
     return 0;
   }
   const ctx = makeCtx(flags, ui);
   switch (command) {
     case "ls":
-      if (rest.length) throw new Error("usage: cfup ls");
+      if (rest.length) throw wrongArgs(["ls"], rest);
       return hostname.ls(ctx);
     case "add":
       return hostname.add(ctx, rest);
@@ -330,7 +333,7 @@ async function main(argv: string[]): Promise<number> {
     case "config":
       return configCommand(ctx, sub!, rest);
     case "doctor":
-      if (rest.length) throw new Error("usage: cfup doctor");
+      if (rest.length) throw wrongArgs(["doctor"], rest);
       return show(ctx);
   }
   throw new Error(`unknown command "${command}"`);
@@ -346,6 +349,12 @@ main(process.argv.slice(2)).then(
     // 403 is Cloudflare's "token lacks a permission" (codes 9109, 10000); say which row to add.
     if (err instanceof CfError && err.status === 403) more.push(...missingPermissionHint(err.route));
     process.stderr.write(`cfup: ${first}\n${more.map((line) => `  ${line}\n`).join("")}`);
+    // Show the help right away rather than telling the user to ask for it.
+    if (err instanceof UsageError) {
+      const { command } = err;
+      const help = (command.length > 1 && commandHelp(command.slice(0, 2))) || (command[0] && commandHelp([command[0]])) || rootHelp(version);
+      process.stderr.write(`\n${help}\n`);
+    }
     process.exitCode = 1;
   },
 );

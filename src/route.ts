@@ -1,10 +1,10 @@
 import type { Ctx } from "./cli.ts";
-import { normalizeCidr } from "./core.ts";
+import { normalizeCidr, wrongArgs } from "./core.ts";
 import { pickTunnel, resolveAccount } from "./tunnel.ts";
 
 export async function routeCommand(ctx: Ctx, sub: string, args: string[]): Promise<number> {
   const arity: Record<string, number> = { ls: 0, add: 1, rm: 1 };
-  if (args.length !== arity[sub]) throw new Error(`wrong arguments (see cfup route ${sub} --help)`);
+  if (args.length !== arity[sub]) throw wrongArgs(["route", sub], args);
   const network = sub === "ls" ? "" : normalizeCidr(args[0]!);
   const cf = ctx.cf();
   const account = await resolveAccount(cf, ctx);

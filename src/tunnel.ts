@@ -12,6 +12,7 @@ import {
   resolveZoneCandidates,
   TOKENS_URL,
   visibleAccounts,
+  wrongArgs,
   type TunnelConfig,
 } from "./core.ts";
 
@@ -221,7 +222,7 @@ async function remove(ctx: Ctx, name: string) {
 
 export async function tunnelCommand(ctx: Ctx, sub: string, args: string[]): Promise<number> {
   const arity: Record<string, number> = { ls: 0, create: 1, token: 1, rm: 1, rename: 2 };
-  if (args.length !== arity[sub]) throw new Error(`wrong arguments (see cfup tunnel ${sub} --help)`);
+  if (args.length !== arity[sub]) throw wrongArgs(["tunnel", sub], args);
   if (sub === "ls") await list(ctx);
   if (sub === "create") await create(ctx, args[0]!.trim());
   if (sub === "token") await token(ctx, args[0]!);

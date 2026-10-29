@@ -7,6 +7,8 @@ import {
   maskSecret,
   permissionFor,
   permissionLabel,
+  UsageError,
+  wrongArgs,
   moveHostname,
   normalizeCidr,
   normalizeHostname,
@@ -266,6 +268,14 @@ describe("ingressDiff", () => {
 test("maskSecret never shows the middle", () => {
   expect(maskSecret("abcdefghijklmnopqrstuvwxyz0123456789")).toBe("abcd…6789");
   expect(maskSecret("short")).toBe("…");
+});
+
+test("wrongArgs names the command and echoes what was typed", () => {
+  const err = wrongArgs(["tunnel", "rename"], ["nas"]);
+  expect(err).toBeInstanceOf(UsageError);
+  expect(err.command).toEqual(["tunnel", "rename"]);
+  expect(err.message).toBe('wrong arguments for "tunnel rename": got "nas"');
+  expect(wrongArgs(["add"], []).message).toBe('wrong arguments for "add": got none');
 });
 
 test("permissionFor maps a failed route to its dashboard row", () => {

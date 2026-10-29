@@ -11,7 +11,23 @@ export type IngressRule = { hostname?: string; service: string; path?: string; o
 export type HostRule = IngressRule & { hostname: string };
 export type TunnelConfig = { ingress?: IngressRule[] | null; [key: string]: unknown };
 
-export type Probe<T> = { ok: true; value: T } | { ok: false; error: string };
+// A mistyped command: cli.ts prints the help for `command` under the message instead of pointing at --help.
+export class UsageError extends Error {
+  constructor(
+    message: string,
+    readonly command: string[],
+  ) {
+    super(message);
+  }
+}
+
+export const wrongArgs = (command: string[], args: string[]) =>
+  new UsageError(
+    `wrong arguments for "${command.join(" ")}": got ${args.length ? args.map((a) => `"${a}"`).join(" ") : "none"}`,
+    command,
+  );
+
+export type Probe<T> ={ ok: true; value: T } | { ok: false; error: string };
 export type Mark = "ok" | "fail" | "unknown";
 export type CheckRow = { mark: Mark; label: string; detail: string; source: string; extra?: string[]; fix?: string[] };
 

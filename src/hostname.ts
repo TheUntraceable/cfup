@@ -15,6 +15,8 @@ import {
   updateIngress,
   upsertIngress,
   type HostRule,
+  UsageError,
+  wrongArgs,
 } from "./core.ts";
 import {
   cnameTarget,
@@ -138,7 +140,7 @@ export async function ls(ctx: Ctx): Promise<number> {
 }
 
 export async function add(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 2) throw new Error("usage: cfup add <hostname> <service> (see cfup add --help)");
+  if (args.length !== 2) throw wrongArgs(["add"], args);
   const host = normalizeHostname(args[0]!);
   const rule = ruleFromArgs(ctx, host, normalizeService(args[1]!));
   const { cf, zone: zoneLookup, account, entries } = await load(ctx, host);
@@ -168,11 +170,11 @@ export async function add(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function set(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length < 1 || args.length > 2) throw new Error("usage: cfup set <hostname> [service] (see cfup set --help)");
+  if (args.length < 1 || args.length > 2) throw wrongArgs(["set"], args);
   const host = normalizeHostname(args[0]!);
   const service = args[1] ? normalizeService(args[1]) : undefined;
   const originRequest = originRequestFromFlags(ctx.flags);
-  if (!service && !originRequest) throw new Error("nothing to change: give a service or an origin option (see cfup set --help)");
+  if (!service && !originRequest) throw new UsageError("nothing to change: give a service or an origin option", ["set"]);
   const path = ctx.flags.path;
   const cf = ctx.cf();
   const account = await resolveAccount(cf, ctx);
@@ -189,7 +191,8 @@ export async function set(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function mv(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 1 || !ctx.flags.tunnel) throw new Error("usage: cfup mv <hostname> --tunnel <name>");
+  if (args.length !== 1) throw wrongArgs(["mv"], args);
+  if (!ctx.flags.tunnel) throw new UsageError("say where to move it: --tunnel <name>", ["mv"]);
   const host = normalizeHostname(args[0]!);
   const { cf, zone: zoneLookup, account, entries } = await load(ctx, host);
   const target = pickTunnel(entries, ctx);
@@ -215,7 +218,7 @@ export async function mv(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function rm(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 1) throw new Error("usage: cfup rm <hostname> (see cfup rm --help)");
+  if (args.length !== 1) throw wrongArgs(["rm"], args);
   const host = normalizeHostname(args[0]!);
   const path = ctx.flags.path;
   const { cf, zone: zoneLookup, account, entries } = await load(ctx, host);
@@ -246,7 +249,7 @@ export async function rm(ctx: Ctx, args: string[]): Promise<number> {
 }
 
 export async function open(ctx: Ctx, args: string[]): Promise<number> {
-  if (args.length !== 1) throw new Error("usage: cfup open <hostname>");
+  if (args.length !== 1) throw wrongArgs(["open"], args);
   const host = normalizeHostname(args[0]!);
   if (host.startsWith("*.")) throw new Error("can't open a wildcard hostname");
   const url = `https://${host}`;

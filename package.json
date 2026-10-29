@@ -1,6 +1,6 @@
 {
   "name": "@theuntraceable/cfup",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Add and remove Cloudflare Tunnel public hostnames from the command line",
   "license": "MIT",
   "type": "module",
