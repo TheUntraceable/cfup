@@ -162,6 +162,9 @@ async function verify(cf: Cloudflare, prefix: string): Promise<TokenInfo> {
   try {
     return await cf.verifyToken();
   } catch (err) {
+    // A malformed token comes back as 400 "Invalid request headers", which doesn't say what's wrong.
+    if (err instanceof CfError && err.status === 400)
+      throw new Error(`${prefix}: Cloudflare doesn't recognise it as an API token (${err.apiMessage}); copy it again from ${TOKENS_URL}`);
     if (err instanceof CfError && err.status !== 0) throw new Error(`${prefix}: ${err.apiMessage}`);
     throw err;
   }

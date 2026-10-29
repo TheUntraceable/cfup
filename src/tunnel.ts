@@ -59,9 +59,10 @@ export function pickTunnel<E extends { tunnel: Tunnel }>(entries: E[], ctx: Ctx)
   }
   if (entries.length === 1) return entries[0]!;
   if (!entries.length) throw new Error("this account has no tunnels; create one with `cfup tunnel create <name>`");
+  const width = Math.max(...entries.map((e) => e.tunnel.name.length));
   throw new Error(
     "several tunnels; pick one with --tunnel <name> or `cfup config set tunnel <name>`:\n" +
-      entries.map((e) => `${e.tunnel.name}  ${e.tunnel.status}`).join("\n"),
+      entries.map((e) => `${e.tunnel.name.padEnd(width)}  ${e.tunnel.status}`).join("\n"),
   );
 }
 

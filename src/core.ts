@@ -67,7 +67,11 @@ export function permissionFor(route: string): Permission | undefined {
 export function missingPermissionHint(route: string): string[] {
   const p = permissionFor(route);
   if (!p) return [`check the token's permissions at ${TOKENS_URL}`];
-  const resources = { Account: ["Account Resources must include the account."], Zone: ["Zone Resources must include the zone."], User: [] }[p.scope];
+  const resources = {
+    Account: ["Account Resources must include the account, and the account id must be right (cfup config show)."],
+    Zone: ["Zone Resources must include the zone."],
+    User: [],
+  }[p.scope];
   return [`the token needs this Permissions row:  ${permissionLabel(p)}`, ...resources, `edit it at ${TOKENS_URL}`];
 }
 

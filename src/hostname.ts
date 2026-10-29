@@ -64,18 +64,26 @@ async function planDns(ctx: Ctx, cf: Cloudflare, zone: Zone, host: string, tunne
   return plan;
 }
 
-async function waitFor(host: string): Promise<{ status: number; seconds: number } | null> {
+// Cloudflare answers for a tunnel that isn't serving yet: 530 (error 1033, no connector) and 502 (connector up, origin not).
+const NOT_SERVING: Record<number, string> = {
+  530: "the tunnel has no running connector (start cloudflared on its machine)",
+  502: "the tunnel is up but can't reach the service (is it running on that machine?)",
+};
+
+async function waitFor(host: string): Promise<{ status: number; seconds: number; live: boolean } | null> {
   const start = Date.now();
+  let last: number | undefined;
   while (Date.now() - start < 60_000) {
     const res = await fetch(`https://${host}/`, {
       method: "HEAD",
       redirect: "manual",
       signal: AbortSignal.timeout(Math.min(15_000, Math.max(1_000, 60_000 - (Date.now() - start)))),
     }).catch(() => null);
-    if (res) return { status: res.status, seconds: Math.round((Date.now() - start) / 1000) };
+    if (res && !NOT_SERVING[res.status]) return { status: res.status, seconds: Math.round((Date.now() - start) / 1000), live: true };
+    if (res) last = res.status;
     await Bun.sleep(2_000);
   }
-  return null;
+  return last ? { status: last, seconds: 60, live: false } : null;
 }
 
 async function finishWithWait(ctx: Ctx, host: string, summary: string): Promise<number> {
@@ -85,12 +93,13 @@ async function finishWithWait(ctx: Ctx, host: string, summary: string): Promise<
   }
   if (!ctx.flags.json) ctx.ui.out(ctx.ui.dim(`waiting for https://${host}/ …`));
   const answer = await waitFor(host);
-  if (answer) {
+  if (answer?.live) {
     await ctx.apply([{ kind: "wait", action: "reach", detail: `https://${host}/ (HTTP ${answer.status} after ${answer.seconds}s)` }]);
     ctx.finish(summary);
     return 0;
   }
-  ctx.finish(`${summary} https://${host}/ didn't answer within 60s.`, {}, false);
+  const why = answer ? `still HTTP ${answer.status} after 60s: ${NOT_SERVING[answer.status]}` : "didn't answer within 60s";
+  ctx.finish(`${summary} https://${host}/ ${why}.`, {}, false);
   return 1;
 }
 
@@ -166,7 +175,14 @@ export async function add(ctx: Ctx, args: string[]): Promise<number> {
       ...elsewhere.map((m) => ingressStep(ctx, account, m, removeIngress(m.config, host).config, "remove", host)),
     ],
   ]);
-  return finishWithWait(ctx, host, `Added ${describeRule(rule)} on "${target.tunnel.name}"; live in ~30s.`);
+  const unchanged = identical && !elsewhere.length && dns.every((d) => d.action === "keep");
+  return finishWithWait(
+    ctx,
+    host,
+    unchanged
+      ? `${describeRule(rule)} was already on "${target.tunnel.name}"; nothing changed.`
+      : `Added ${describeRule(rule)} on "${target.tunnel.name}"${ctx.flags.wait ? "." : "; live in ~30s."}`,
+  );
 }
 
 export async function set(ctx: Ctx, args: string[]): Promise<number> {
@@ -187,7 +203,9 @@ export async function set(ctx: Ctx, args: string[]): Promise<number> {
     return ingressStep(ctx, account, m, u.config, changed ? "update" : "keep", describeRule(u.after));
   });
   await ctx.apply([plan]);
-  return finishWithWait(ctx, host, `Updated ${host} on "${matches.map((m) => m.tunnel.name).join(", ")}".`);
+  const where = matches.map((m) => m.tunnel.name).join(", ");
+  const changed = plan.some((p) => p.action !== "keep");
+  return finishWithWait(ctx, host, changed ? `Updated ${host} on "${where}".` : `${host} on "${where}" already looks like that; nothing changed.`);
 }
 
 export async function mv(ctx: Ctx, args: string[]): Promise<number> {
@@ -199,8 +217,9 @@ export async function mv(ctx: Ctx, args: string[]): Promise<number> {
   if (isLocal(target.tunnel)) throw localRefusal(target.tunnel);
   const sources = findHostname(entries, host).filter((m) => m.tunnel.id !== target.tunnel.id);
   if (!sources.length) {
-    const here = findHostname([target], host).length > 0;
-    throw new Error(here ? `${host} is already on "${target.tunnel.name}"` : `${host} isn't routed on any tunnel; cfup add creates it`);
+    if (!findHostname([target], host).length) throw new Error(`${host} isn't routed on any tunnel; cfup add creates it`);
+    ctx.finish(`${host} is already on "${target.tunnel.name}"; nothing changed.`);
+    return 0;
   }
 
   let toConfig = target.config;
@@ -255,8 +274,13 @@ export async function open(ctx: Ctx, args: string[]): Promise<number> {
   const url = `https://${host}`;
   const command =
     process.platform === "win32" ? ["cmd", "/c", "start", "", url] : process.platform === "darwin" ? ["open", url] : ["xdg-open", url];
-  Bun.spawn(command, { stdio: ["ignore", "ignore", "ignore"], windowsHide: true }).unref();
-  if (ctx.flags.json) ctx.ui.json({ ok: true, url });
-  else ctx.ui.out(`opened ${url}`);
+  let opened = true;
+  try {
+    Bun.spawn(command, { stdio: ["ignore", "ignore", "ignore"], windowsHide: true }).unref();
+  } catch {
+    opened = false; // headless box: no browser opener on PATH
+  }
+  if (ctx.flags.json) ctx.ui.json({ ok: true, url, opened });
+  else ctx.ui.out(opened ? `opened ${url}` : `no browser here; open ${url}`);
   return 0;
 }
