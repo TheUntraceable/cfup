@@ -13,7 +13,60 @@ export type TunnelConfig = { ingress?: IngressRule[] | null; [key: string]: unkn
 
 export type Probe<T> = { ok: true; value: T } | { ok: false; error: string };
 export type Mark = "ok" | "fail" | "unknown";
-export type CheckRow = { mark: Mark; label: string; detail: string; source: string; extra?: string[] };
+export type CheckRow = { mark: Mark; label: string; detail: string; source: string; extra?: string[]; fix?: string[] };
+
+// Spelled exactly as the three dropdowns of a permission row in the dashboard's API token editor.
+export type Permission = { scope: "Account" | "Zone" | "User"; group: string; level: "Read" | "Edit" };
+export const PERMISSIONS = {
+  tunnel: { scope: "Account", group: "Cloudflare Tunnel", level: "Edit" },
+  dns: { scope: "Zone", group: "DNS", level: "Edit" },
+  accounts: { scope: "Account", group: "Account Settings", level: "Read" },
+  tokens: { scope: "User", group: "API Tokens", level: "Read" },
+} as const satisfies Record<string, Permission>;
+export const TOKENS_URL = "https://dash.cloudflare.com/profile/api-tokens";
+
+export const permissionLabel = (p: Permission) => `${p.scope} | ${p.group} | ${p.level}`;
+
+const recipe: [Permission, string][] = [
+  [PERMISSIONS.tunnel, ""],
+  [PERMISSIONS.dns, ""],
+  [PERMISSIONS.accounts, "lets cfup find your account"],
+  [PERMISSIONS.tokens, "optional: lets cfup check the rows above"],
+];
+const recipeWidth = Math.max(...recipe.map(([p]) => permissionLabel(p).length));
+export const TOKEN_RECIPE = [
+  ...recipe.map(([p, why]) => `  ${permissionLabel(p).padEnd(recipeWidth)}${why ? `  (${why})` : ""}`.trimEnd()),
+  "then Zone Resources → Include → Specific zone (or All zones).",
+];
+
+// The permission a failed call most likely lacked, keyed off the route cf.ts reports ("GET /zones/{id}/dns_records").
+export function permissionFor(route: string): Permission | undefined {
+  if (/\/(cfd_tunnel|teamnet)\b/.test(route)) return PERMISSIONS.tunnel;
+  if (/\/(zones|dns_records)\b/.test(route)) return PERMISSIONS.dns;
+  if (/ \/accounts$/.test(route)) return PERMISSIONS.accounts;
+  if (/\/user\/tokens\/(?!verify)/.test(route)) return PERMISSIONS.tokens;
+  return undefined;
+}
+
+export function missingPermissionHint(route: string): string[] {
+  const p = permissionFor(route);
+  if (!p) return [`check the token's permissions at ${TOKENS_URL}`];
+  const resources = { Account: ["Account Resources must include the account."], Zone: ["Zone Resources must include the zone."], User: [] }[p.scope];
+  return [`the token needs this Permissions row:  ${permissionLabel(p)}`, ...resources, `edit it at ${TOKENS_URL}`];
+}
+
+type ZoneAccount = { account?: { id: string; name: string } };
+
+// GET /accounts can come back empty for a token that still works on its account, and every zone names its account.
+export function visibleAccounts(
+  accounts: Probe<{ id: string; name: string }[]>,
+  zones: Probe<ZoneAccount[]>,
+): { list: { id: string; name: string }[]; viaZones: boolean } {
+  if (accounts.ok && accounts.value.length) return { list: accounts.value, viaZones: false };
+  const seen = new Map<string, { id: string; name: string }>();
+  if (zones.ok) for (const z of zones.value) if (z.account?.id) seen.set(z.account.id, z.account);
+  return { list: [...seen.values()], viaZones: seen.size > 0 };
+}
 
 const CATCH_ALL: IngressRule = { service: "http_status:404" };
 const SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -231,19 +284,23 @@ export function pastTense(verb: string): string {
   return verb.endsWith("e") ? `${verb}d` : `${verb}ed`;
 }
 
+
 export type ChecklistInput = {
   token: { status: string; expiresOn?: string | null };
   accounts: Probe<{ id: string; name: string }[]>;
   account?: string;
   tunnels: Probe<number> | null;
-  zones: Probe<string[]>;
+  zones: Probe<({ name: string } & ZoneAccount)[]>;
   policies: Probe<{ effect: string; permission_groups: { name: string }[] }[]>;
 };
 
 const TUNNEL_WRITE = /tunnel (write|edit)$/i;
 const DNS_WRITE = /^dns (write|edit)$/i;
+const ZONES_SHOWN = 3;
 
-export function evaluateChecklist(input: ChecklistInput): { rows: CheckRow[]; hardFailure: boolean } {
+const addRow = (p: Permission) => `add  ${permissionLabel(p)}`;
+
+export function evaluateChecklist(input: ChecklistInput): { rows: CheckRow[]; hardFailure: boolean; notes: string[] } {
   const { token, accounts, tunnels, zones, policies } = input;
   const valid: CheckRow = {
     mark: token.status === "active" ? "ok" : "fail",
@@ -252,49 +309,62 @@ export function evaluateChecklist(input: ChecklistInput): { rows: CheckRow[]; ha
     source: "",
   };
 
+  const visible = visibleAccounts(accounts, zones);
   const account: CheckRow = { mark: "fail", label: "Account read", detail: "", source: "GET /accounts" };
-  if (!accounts.ok) account.detail = accounts.error;
-  else if (accounts.value.length === 0) account.detail = "no accounts visible";
-  else {
+  const chosen = visible.list.find((a) => a.id === input.account) ?? (visible.list.length === 1 ? visible.list[0] : undefined);
+  if (chosen) {
     account.mark = "ok";
-    const chosen =
-      accounts.value.find((a) => a.id === input.account) ?? (accounts.value.length === 1 ? accounts.value[0] : undefined);
-    if (chosen) account.detail = `account "${chosen.name}" (${maskSecret(chosen.id)})`;
-    else {
-      account.detail = `${accounts.value.length} accounts`;
-      account.extra = accounts.value.map((a) => `${a.id}  ${a.name}`);
-    }
+    account.detail = `account "${chosen.name}" (${maskSecret(chosen.id)})${visible.viaZones ? ", found through its zones" : ""}`;
+  } else if (input.account) {
+    account.mark = "ok";
+    account.detail = `account ${maskSecret(input.account)} (from your settings)`;
+  } else if (visible.list.length) {
+    account.detail = `${visible.list.length} accounts`;
+    account.extra = visible.list.map((a) => `${a.id}  ${a.name}`);
+    account.fix = ["pick one: cfup config set account <id>"];
+  } else {
+    account.detail = accounts.ok ? "no accounts visible" : accounts.error;
+    account.fix = [
+      addRow(PERMISSIONS.accounts),
+      "or skip the lookup: cfup config set account <id>",
+      "(the id is the 32-character part of the dashboard URL after dash.cloudflare.com/)",
+    ];
   }
 
   const tunnel: CheckRow = { mark: "fail", label: "Tunnel read", detail: "", source: "GET /accounts/{id}/cfd_tunnel" };
-  if (!tunnels) tunnel.detail = account.mark === "ok" ? "pick an account: cfup config set account <id>" : "needs an account";
-  else if (!tunnels.ok) tunnel.detail = tunnels.error;
-  else {
+  if (!tunnels) tunnel.detail = "needs an account first";
+  else if (!tunnels.ok) {
+    tunnel.detail = tunnels.error;
+    tunnel.fix = [addRow(PERMISSIONS.tunnel), "and make sure Account Resources includes this account"];
+  } else {
     tunnel.mark = "ok";
     tunnel.detail = `${tunnels.value} tunnel${tunnels.value === 1 ? "" : "s"}`;
   }
 
   const zone: CheckRow = { mark: "fail", label: "Zone read", detail: "", source: "GET /zones" };
-  if (!zones.ok) zone.detail = zones.error;
-  else if (zones.value.length === 0) zone.detail = "no zones visible";
-  else {
+  if (zones.ok && zones.value.length) {
     zone.mark = "ok";
-    zone.detail = zones.value.join(", ");
+    const more = zones.value.length - ZONES_SHOWN;
+    zone.detail = zones.value.slice(0, ZONES_SHOWN).map((z) => z.name).join(", ") + (more > 0 ? ` +${more} more` : "");
+  } else {
+    zone.detail = zones.ok ? "no zones visible" : zones.error;
+    zone.fix = [addRow(PERMISSIONS.dns), "with Zone Resources → Include → the zones you'll route"];
   }
 
   const tunnelWrite: CheckRow = {
     mark: "unknown",
     label: "Tunnel write",
-    detail: "verified on first `cfup add`",
-    source: "(needs Account → Cloudflare Tunnel: Edit)",
+    detail: `needs ${permissionLabel(PERMISSIONS.tunnel)}`,
+    source: "PUT /accounts/{id}/cfd_tunnel/{id}/configurations",
   };
   const dnsWrite: CheckRow = {
     mark: "unknown",
     label: "DNS write",
-    detail: "verified on first `cfup add`",
-    source: "(needs Zone → DNS: Edit)",
+    detail: `needs ${permissionLabel(PERMISSIONS.dns)}`,
+    source: "POST /zones/{id}/dns_records",
   };
   const rows = [valid, account, tunnel, zone, tunnelWrite, dnsWrite];
+  const notes: string[] = [];
 
   if (policies.ok) {
     const granted = policies.value
@@ -302,12 +372,13 @@ export function evaluateChecklist(input: ChecklistInput): { rows: CheckRow[]; ha
       .flatMap((p) => p.permission_groups.map((g) => g.name));
     const tunnelGrant = granted.find((n) => TUNNEL_WRITE.test(n));
     const dnsGrant = granted.find((n) => DNS_WRITE.test(n));
-    for (const [row, grant] of [
-      [tunnelWrite, tunnelGrant],
-      [dnsWrite, dnsGrant],
+    for (const [row, grant, permission] of [
+      [tunnelWrite, tunnelGrant, PERMISSIONS.tunnel],
+      [dnsWrite, dnsGrant, PERMISSIONS.dns],
     ] as const) {
       row.mark = grant ? "ok" : "fail";
-      row.detail = grant ? `granted (${grant})` : "missing from token policies";
+      row.detail = grant ? `granted (${grant})` : "missing from the token";
+      if (!grant) row.fix = [addRow(permission)];
     }
     rows.push({
       mark: "ok",
@@ -315,7 +386,9 @@ export function evaluateChecklist(input: ChecklistInput): { rows: CheckRow[]; ha
       detail: [tunnelGrant, dnsGrant].filter(Boolean).join(", ") || "no Tunnel or DNS edit grants",
       source: "GET /user/tokens/{id}",
     });
-  }
+  } else notes.push(`? rows: cfup can't read the token's own permissions; add ${permissionLabel(PERMISSIONS.tokens)} to check them here`);
 
-  return { rows, hardFailure: [account, tunnel, zone].some((r) => r.mark === "fail") };
+  if (rows.some((r) => r.fix))
+    notes.push(`Fix at ${TOKENS_URL} → your token → Edit. Each "add" line is one Permissions row: type | permission | level.`);
+  return { rows, hardFailure: [account, tunnel, zone].some((r) => r.mark === "fail"), notes };
 }

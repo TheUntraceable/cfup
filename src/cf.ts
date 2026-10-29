@@ -1,4 +1,4 @@
-import type { TunnelConfig } from "./core.ts";
+import type { Probe, TunnelConfig } from "./core.ts";
 
 const BASE = "https://api.cloudflare.com/client/v4";
 
@@ -12,6 +12,12 @@ export class CfError extends Error {
   }
 }
 
+export const probe = <T>(p: Promise<T>): Promise<Probe<T>> =>
+  p.then(
+    (value) => ({ ok: true as const, value }),
+    (err) => ({ ok: false as const, error: err instanceof CfError ? err.apiMessage : String(err) }),
+  );
+
 export type Account = { id: string; name: string };
 export type Tunnel = {
   id: string;
@@ -23,7 +29,7 @@ export type Tunnel = {
   created_at?: string;
 };
 export type Route = { id: string; network: string; tunnel_id: string; tunnel_name?: string; comment?: string };
-export type Zone = { id: string; name: string };
+export type Zone = { id: string; name: string; account?: Account };
 export type DnsRecord = { id: string; type: string; name: string; content: string };
 export type TokenInfo = { id: string; status: string; expires_on?: string | null };
 export type TokenPolicy = { effect: string; permission_groups: { id: string; name: string }[] };

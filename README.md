@@ -33,14 +33,18 @@ The npm package is scoped because npm's similarity filter blocks the bare name `
 
 ## Token
 
-Create a token at dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom:
+Create a token at [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) → Create Token → Create Custom Token. Each line below is one row under **Permissions**, spelled exactly as the three dropdowns show it:
 
-| Scope | Permission |
-|---|---|
-| Account → Cloudflare Tunnel | Edit |
-| Zone → DNS | Edit |
-| Zone Resources | Include → Specific zone(s) you'll route |
-| (optional) User → API Tokens | Read — lets `cfup config show` prove the Edit permissions |
+| Type | Permission | Level | Why |
+|---|---|---|---|
+| Account | Cloudflare Tunnel | Edit | tunnels, ingress rules, private routes |
+| Zone | DNS | Edit | the CNAME for each hostname |
+| Account | Account Settings | Read | lets cfup find your account (optional when you have zones: it falls back to their account) |
+| User | API Tokens | Read | optional: lets `cfup config show` confirm the two Edit rows |
+
+Then set **Zone Resources** → Include → Specific zone (or All zones), and **Account Resources** → Include → your account.
+
+When a check or a command fails for lack of a permission, cfup prints the exact row to add.
 
 `tunnel create`, `tunnel rm`, `tunnel token` and the `route` commands need nothing more: Account → Cloudflare Tunnel: Edit covers the tunnel and private-route (teamnet) endpoints.
 

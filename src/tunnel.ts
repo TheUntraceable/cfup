@@ -1,13 +1,17 @@
-import type { Cloudflare, DnsRecord, Route, Tunnel, Zone } from "./cf.ts";
+import { probe, type Cloudflare, type DnsRecord, type Route, type Tunnel, type Zone } from "./cf.ts";
 import type { Ctx, Planned } from "./cli.ts";
 import { configPath, readConfig, writeConfig } from "./config.ts";
 import {
   ingressDiff,
   maskSecret,
+  PERMISSIONS,
+  permissionLabel,
   publicHostnames,
   removeIngress,
   resolveTunnel,
   resolveZoneCandidates,
+  TOKENS_URL,
+  visibleAccounts,
   type TunnelConfig,
 } from "./core.ts";
 
@@ -19,9 +23,16 @@ export const pointsAt = (r: DnsRecord, t: Tunnel) => r.type === "CNAME" && r.con
 
 export async function resolveAccount(cf: Cloudflare, ctx: Ctx): Promise<string> {
   if (ctx.settings.account) return ctx.settings.account.value;
-  const accounts = await cf.accounts();
+  const listed = await probe(cf.accounts());
+  const zones = listed.ok && listed.value.length ? { ok: true as const, value: [] } : await probe(cf.zones());
+  const accounts = visibleAccounts(listed, zones).list;
   if (accounts.length === 1) return accounts[0]!.id;
-  if (!accounts.length) throw new Error("this token can't see any account (needs Account → Cloudflare Tunnel: Edit)");
+  if (!accounts.length)
+    throw new Error(
+      "this token can't see any account. Either:\n" +
+        `add the Permissions row  ${permissionLabel(PERMISSIONS.accounts)}  at ${TOKENS_URL}\n` +
+        "or set it directly: cfup config set account <id>  (the 32-character id after dash.cloudflare.com/ in the dashboard URL)",
+    );
   throw new Error(
     `this token sees ${accounts.length} accounts; pick one with --account, CFUP_ACCOUNT, or \`cfup config set account <id>\`:\n` +
       accounts.map((a) => `${a.id}  ${a.name}`).join("\n"),

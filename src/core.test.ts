@@ -5,6 +5,8 @@ import {
   findHostname,
   ingressDiff,
   maskSecret,
+  permissionFor,
+  permissionLabel,
   moveHostname,
   normalizeCidr,
   normalizeHostname,
@@ -266,14 +268,51 @@ test("maskSecret never shows the middle", () => {
   expect(maskSecret("short")).toBe("…");
 });
 
+test("permissionFor maps a failed route to its dashboard row", () => {
+  const label = (route: string) => {
+    const p = permissionFor(route);
+    return p && permissionLabel(p);
+  };
+  expect(label("PUT /accounts/abc/cfd_tunnel/def/configurations")).toBe("Account | Cloudflare Tunnel | Edit");
+  expect(label("POST /accounts/abc/teamnet/routes")).toBe("Account | Cloudflare Tunnel | Edit");
+  expect(label("POST /zones/abc/dns_records")).toBe("Zone | DNS | Edit");
+  expect(label("GET /zones")).toBe("Zone | DNS | Edit");
+  expect(label("GET /accounts")).toBe("Account | Account Settings | Read");
+  expect(label("GET /user/tokens/abc")).toBe("User | API Tokens | Read");
+  expect(label("GET /user/tokens/verify")).toBeUndefined();
+});
+
 describe("evaluateChecklist", () => {
   const base: ChecklistInput = {
     token: { status: "active", expiresOn: null },
     accounts: { ok: true, value: [{ id: "abcdef0123456789", name: "Ridhwan" }] },
     tunnels: { ok: true, value: 3 },
-    zones: { ok: true, value: ["untraceable.dev", "unstack.pro"] },
+    zones: { ok: true, value: [{ name: "untraceable.dev" }, { name: "unstack.pro" }] },
     policies: { ok: false, error: "Unauthorized" },
   };
+  test("an empty account list falls back to the zones' account", () => {
+    const { rows, hardFailure } = evaluateChecklist({
+      ...base,
+      accounts: { ok: true, value: [] },
+      zones: { ok: true, value: [{ name: "untraceable.dev", account: { id: "abcdef0123456789", name: "Ridhwan" } }] },
+    });
+    expect(hardFailure).toBe(false);
+    expect(rows[1]!.detail).toBe('account "Ridhwan" (abcd…6789), found through its zones');
+  });
+  test("no account anywhere names the dashboard row to add", () => {
+    const { rows, notes } = evaluateChecklist({ ...base, accounts: { ok: true, value: [] }, tunnels: null });
+    expect(rows[1]!.fix![0]).toBe("add  Account | Account Settings | Read");
+    expect(rows[2]!.detail).toBe("needs an account first");
+    expect(notes.at(-1)).toContain("https://dash.cloudflare.com/profile/api-tokens");
+  });
+  test("a configured account passes even when the token can't list it", () => {
+    const { rows } = evaluateChecklist({ ...base, accounts: { ok: true, value: [] }, account: "0123456789abcdef" });
+    expect(rows[1]!.mark).toBe("ok");
+  });
+  test("a long zone list is cut short", () => {
+    const zones = ["a.dev", "b.dev", "c.dev", "d.dev", "e.dev"].map((name) => ({ name }));
+    expect(evaluateChecklist({ ...base, zones: { ok: true, value: zones } }).rows[3]!.detail).toBe("a.dev, b.dev, c.dev +2 more");
+  });
   test("all readable, write unknown without policy access", () => {
     const { rows, hardFailure } = evaluateChecklist(base);
     expect(hardFailure).toBe(false);
@@ -287,6 +326,7 @@ describe("evaluateChecklist", () => {
     });
     expect(rows.find((r) => r.label === "Tunnel write")!.mark).toBe("ok");
     expect(rows.find((r) => r.label === "DNS write")!.mark).toBe("fail");
+    expect(rows.find((r) => r.label === "DNS write")!.fix).toEqual(["add  Zone | DNS | Edit"]);
     expect(rows.at(-1)!.label).toBe("Policies readable");
   });
   test("several accounts without a choice is a hard failure", () => {

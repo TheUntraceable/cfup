@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { version } from "../package.json";
-import { CfError, cloudflare, type Cloudflare, type TokenInfo } from "./cf.ts";
+import { CfError, cloudflare, probe, type Cloudflare, type TokenInfo } from "./cf.ts";
 import {
   COMMANDS,
   FLAG_SPECS,
@@ -12,7 +12,16 @@ import {
   type Flags,
 } from "./completions.ts";
 import { CONFIG_KEYS, configPath, readConfig, resolveSettings, writeConfig, type ConfigKey, type Settings } from "./config.ts";
-import { evaluateChecklist, maskSecret, pastTense, type CheckRow, type Probe } from "./core.ts";
+import {
+  evaluateChecklist,
+  maskSecret,
+  missingPermissionHint,
+  pastTense,
+  TOKEN_RECIPE,
+  TOKENS_URL,
+  visibleAccounts,
+  type CheckRow,
+} from "./core.ts";
 import * as hostname from "./hostname.ts";
 import { routeCommand } from "./route.ts";
 import { tunnelCommand } from "./tunnel.ts";
@@ -125,7 +134,8 @@ function makeCtx(flags: Flags, ui: Ui): Ctx {
       if (!token)
         throw new Error(
           "no Cloudflare API token. Run `cfup config set token <token>`.\n" +
-            "Create one at dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom.",
+            `Create one at ${TOKENS_URL} → Create Token → Create Custom Token, with these Permissions rows:\n` +
+            TOKEN_RECIPE.join("\n"),
         );
       return cloudflare(token);
     },
@@ -146,12 +156,6 @@ function makeCtx(flags: Flags, ui: Ui): Ctx {
   };
 }
 
-const probe = <T>(p: Promise<T>): Promise<Probe<T>> =>
-  p.then(
-    (value) => ({ ok: true as const, value }),
-    (err) => ({ ok: false as const, error: err instanceof CfError ? err.apiMessage : String(err) }),
-  );
-
 async function verify(cf: Cloudflare, prefix: string): Promise<TokenInfo> {
   try {
     return await cf.verifyToken();
@@ -162,14 +166,14 @@ async function verify(cf: Cloudflare, prefix: string): Promise<TokenInfo> {
 }
 
 async function checklist(cf: Cloudflare, token: TokenInfo, account?: string) {
-  const accounts = probe(cf.accounts());
-  const tunnelCount = (id: string) => probe(cf.tunnels(id).then((t) => t.length));
-  const [accountsResult, tunnels, zones, policies] = await Promise.all([
-    accounts,
-    account ? tunnelCount(account) : accounts.then((a) => (a.ok && a.value.length === 1 ? tunnelCount(a.value[0]!.id) : null)),
-    probe(cf.zones().then((z) => z.map((zone) => zone.name))),
+  const [accountsResult, zones, policies] = await Promise.all([
+    probe(cf.accounts()),
+    probe(cf.zones()),
     probe(cf.tokenPolicies(token.id)),
   ]);
+  const visible = visibleAccounts(accountsResult, zones).list;
+  const chosen = account ?? (visible.length === 1 ? visible[0]!.id : undefined);
+  const tunnels = chosen ? await probe(cf.tunnels(chosen).then((t) => t.length)) : null;
   return evaluateChecklist({
     token: { status: token.status, expiresOn: token.expires_on },
     accounts: accountsResult,
@@ -180,14 +184,22 @@ async function checklist(cf: Cloudflare, token: TokenInfo, account?: string) {
   });
 }
 
-function printChecklist(ui: Ui, rows: CheckRow[]) {
+// Fix lines sit under their row instead of in a column, so a long row never wraps the table.
+function printChecklist(ui: Ui, { rows, notes }: { rows: CheckRow[]; notes: string[] }) {
   ui.out(ui.bold("Token"));
   const [valid, ...rest] = rows;
-  ui.out(`  ${ui.mark(valid!.mark)} ${valid!.mark === "fail" ? ui.red(valid!.label) : valid!.label}`);
-  const paintRow = (r: CheckRow) => (r.mark === "fail" ? ui.red : String);
-  const cells = rest.map((r) => [ui.mark(r.mark), paintRow(r)(r.label), paintRow(r)(r.detail), ui.dim(r.source)]);
-  ui.table(cells, "  ");
-  for (const r of rest) for (const extra of r.extra ?? []) ui.out(`      ${extra}`);
+  // The plain-text marks differ in width ([ok] vs [x]); coloured ones are all one cell.
+  const mark = (m: CheckRow["mark"]) => (ui.color ? ui.mark(m) : ui.mark(m).padEnd(4));
+  ui.out(`  ${mark(valid!.mark)} ${valid!.mark === "fail" ? ui.red(valid!.label) : valid!.label}`);
+  const width = Math.max(...rest.map((r) => r.label.length));
+  for (const r of rest) {
+    const paint = r.mark === "fail" ? ui.red : String;
+    ui.out(`  ${mark(r.mark)} ${paint(r.label.padEnd(width))}  ${r.mark === "ok" ? r.detail : paint(r.detail)}`);
+    for (const extra of r.extra ?? []) ui.out(`      ${extra}`);
+    for (const fix of r.fix ?? []) ui.out(`      ${fix.startsWith("add ") ? ui.yellow(fix) : ui.dim(fix)}`);
+  }
+  if (notes.length) ui.out();
+  for (const note of notes) ui.out(ui.dim(note));
 }
 
 async function setToken(ctx: Ctx, token: string): Promise<number> {
@@ -196,7 +208,7 @@ async function setToken(ctx: Ctx, token: string): Promise<number> {
   if (info.status !== "active") throw new Error(`token is ${info.status}, not saved`);
   const result = await checklist(cf, info, ctx.settings.account?.value);
   if (!ctx.flags.json) {
-    printChecklist(ctx.ui, result.rows);
+    printChecklist(ctx.ui, result);
     ctx.ui.out();
   }
   const path = configPath();
@@ -239,7 +251,7 @@ async function show(ctx: Ctx): Promise<number> {
   const info = await verify(cf, "token rejected");
   const result = await checklist(cf, info, account?.value);
   if (ctx.flags.json) ui.json({ ...settings, checklist: result.rows, hardFailure: result.hardFailure });
-  else printChecklist(ui, result.rows);
+  else printChecklist(ui, result);
   return result.hardFailure || info.status !== "active" ? 1 : 0;
 }
 
@@ -331,6 +343,8 @@ main(process.argv.slice(2)).then(
   (err) => {
     if (process.env.CFUP_DEBUG === "1") console.error(err);
     const [first, ...more] = (err instanceof Error ? err.message : String(err)).split("\n");
+    // 403 is Cloudflare's "token lacks a permission" (codes 9109, 10000); say which row to add.
+    if (err instanceof CfError && err.status === 403) more.push(...missingPermissionHint(err.route));
     process.stderr.write(`cfup: ${first}\n${more.map((line) => `  ${line}\n`).join("")}`);
     process.exitCode = 1;
   },
